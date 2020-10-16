@@ -401,6 +401,8 @@
     <Compile Include="Securities\BuyingPowerModelExtensions.cs" />
     <Compile Include="Securities\BuyingPowerParameters.cs" />
     <Compile Include="Securities\GetMaximumOrderQuantityForDeltaBuyingPowerParameters.cs" />
+    <Compile Include="Securities\Option\StrategyMatcher\OptionPosition.cs" />
+    <Compile Include="Securities\Option\StrategyMatcher\OptionPositionCollection.cs" />
     <Compile Include="Securities\RegisteredSecurityDataTypesProvider.cs" />
     <Compile Include="Securities\ErrorCurrencyConverter.cs" />
     <Compile Include="Securities\GetMaximumOrderQuantityForTargetBuyingPowerParameters.cs" />
