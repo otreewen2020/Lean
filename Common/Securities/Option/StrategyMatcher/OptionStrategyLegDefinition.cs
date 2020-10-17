@@ -13,8 +13,11 @@
  * limitations under the License.
 */
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
 
 namespace QuantConnect.Securities.Option.StrategyMatcher
 {
@@ -43,11 +46,23 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
         /// <param name="right">The leg's contract right</param>
         /// <param name="quantity">The leg's unit quantity</param>
         /// <param name="predicates">The conditions a position must meet in order to match this definition</param>
-        public OptionStrategyLegDefinition(OptionRight right, int quantity, OptionStrategyLegPredicate[] predicates)
+        public OptionStrategyLegDefinition(OptionRight right, int quantity, IEnumerable<OptionStrategyLegPredicate> predicates)
         {
             Right = right;
             Quantity = quantity;
-            _predicates = predicates;
+            _predicates = predicates.ToArray();
+        }
+
+        /// <summary>
+        /// Creates a new <see cref="OptionStrategyLegDefinition"/> matching the specified parameters
+        /// </summary>
+        public static OptionStrategyLegDefinition Create(OptionRight right, int quantity,
+            IEnumerable<Expression<Func<List<OptionPosition>, OptionPosition, bool>>> predicates
+            )
+        {
+            return new OptionStrategyLegDefinition(right, quantity,
+                predicates.Select(OptionStrategyLegPredicate.Create)
+            );
         }
 
         /// <summary>Returns an enumerator that iterates through the collection.</summary>
