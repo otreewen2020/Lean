@@ -80,6 +80,36 @@ namespace QuantConnect
             => OfType<T>.GetExpression(Type);
 
         /// <summary>
+        /// Flips the logic ordering of the comparison's operands. For example, <see cref="LessThan"/>
+        /// is converted into <see cref="GreaterThan"/>
+        /// </summary>
+        public BinaryComparison FlipOperands()
+        {
+            switch (Type)
+            {
+                case ExpressionType.Equal:              return this;
+                case ExpressionType.NotEqual:           return this;
+                case ExpressionType.LessThan:           return GreaterThan;
+                case ExpressionType.LessThanOrEqual:    return GreaterThanOrEqual;
+                case ExpressionType.GreaterThan:        return LessThan;
+                case ExpressionType.GreaterThanOrEqual: return LessThanOrEqual;
+                default:
+                    throw new Exception(
+                        "The skies are falling and the oceans are rising! " +
+                        "If you've made it here then this exception is the least of your worries! " +
+                        $"ExpressionType: {Type}"
+                    );
+            }
+        }
+
+        /// <summary>Returns a string that represents the current object.</summary>
+        /// <returns>A string that represents the current object.</returns>
+        public override string ToString()
+        {
+            return Type.ToString();
+        }
+
+        /// <summary>
         /// Provides thread-safe lookups of expressions and functions for binary comparisons by type.
         /// MUCH faster than using a concurrency dictionary, for example, as it's expanded at runtime
         /// and hard-linked, no look-up is actually performed!

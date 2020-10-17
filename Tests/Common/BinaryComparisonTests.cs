@@ -28,7 +28,7 @@ namespace QuantConnect.Tests.Common
         [TestCase(ExpressionType.LessThanOrEqual, true, true)]
         [TestCase(ExpressionType.GreaterThan, false, false)]
         [TestCase(ExpressionType.GreaterThanOrEqual, true, false)]
-        public void EnumerateOperatorMethodNames(ExpressionType type, bool expected1, bool expected2)
+        public void EvaluatesComparison(ExpressionType type, bool expected1, bool expected2)
         {
             const int left1 = 1;
             const int right1 = 1;
@@ -36,6 +36,29 @@ namespace QuantConnect.Tests.Common
             const int right2 = 3;
 
             var comparison = BinaryComparison.FromExpressionType(type);
+
+            var actual1 = comparison.Evaluate(left1, right1);
+            Assert.AreEqual(expected1, actual1);
+
+            var actual2 = comparison.Evaluate(left2, right2);
+            Assert.AreEqual(expected2, actual2);
+        }
+
+        [Test]
+        [TestCase(ExpressionType.Equal, true, false)]
+        [TestCase(ExpressionType.NotEqual, false, true)]
+        [TestCase(ExpressionType.LessThan, false, false)]
+        [TestCase(ExpressionType.LessThanOrEqual, true, false)]
+        [TestCase(ExpressionType.GreaterThan, false, true)]
+        [TestCase(ExpressionType.GreaterThanOrEqual, true, true)]
+        public void EvaluatesFlippedOperandsComparison(ExpressionType type, bool expected1, bool expected2)
+        {
+            const int left1 = 1;
+            const int right1 = 1;
+            const int left2 = 2;
+            const int right2 = 3;
+
+            var comparison = BinaryComparison.FromExpressionType(type).FlipOperands();
 
             var actual1 = comparison.Evaluate(left1, right1);
             Assert.AreEqual(expected1, actual1);
