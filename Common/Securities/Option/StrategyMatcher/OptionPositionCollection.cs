@@ -133,6 +133,24 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
         }
 
         /// <summary>
+        /// Determines if a position is held in the specified <paramref name="symbol"/>
+        /// </summary>
+        public bool HasPosition(Symbol symbol)
+        {
+            OptionPosition position;
+            return TryGetPosition(symbol, out position) && position.Quantity != 0;
+        }
+
+        /// <summary>
+        /// Retrieves the <see cref="OptionPosition"/> for the specified <paramref name="symbol"/>
+        /// if one exists in this collection.
+        /// </summary>
+        public bool TryGetPosition(Symbol symbol, out OptionPosition position)
+        {
+            return _positions.TryGetValue(symbol, out position);
+        }
+
+        /// <summary>
         /// Gets the underlying security's position
         /// </summary>
         /// <returns></returns>
