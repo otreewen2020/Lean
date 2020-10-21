@@ -61,6 +61,18 @@ namespace QuantConnect
             = new Dictionary<IntPtr, PythonActivator>();
 
         /// <summary>
+        /// Safe multiplies a decimal by 100
+        /// </summary>
+        /// <param name="value">The decimal to multiply</param>
+        /// <returns>The result, maxed out at decimal.MaxValue</returns>
+        public static decimal SafeMultiply100(this decimal value)
+        {
+            const decimal max = decimal.MaxValue / 100m;
+            if (value >= max) return decimal.MaxValue;
+            return value * 100m;
+        }
+
+        /// <summary>
         /// Serialize a list of ticks using protobuf
         /// </summary>
         /// <param name="ticks">The list of ticks to serialize</param>
