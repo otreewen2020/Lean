@@ -32,11 +32,9 @@ namespace QuantConnect.Tests.Common.Securities.Options.StrategyMatcher
     {
         public const decimal DefaultLegStrike = 100m;
         public const decimal DefaultPositionStrike = 95m;
-        private static readonly OptionPositionCollection Positions;
 
-        static OptionStrategyLegPredicateTests()
-        {
-            Positions = OptionPositionCollection.Create(Symbols.SPY, Enumerable.Empty<SecurityHolding>())
+        private static readonly OptionPositionCollection Positions
+            = OptionPositionCollection.Create(Symbols.SPY, ContractMultiplier, Enumerable.Empty<SecurityHolding>())
                 .Add(new OptionPosition(Symbols.SPY, 1000))
                 .Add(new OptionPosition(Put[95m], 1))
                 .Add(new OptionPosition(Put[95m, 1], 1))
@@ -56,7 +54,6 @@ namespace QuantConnect.Tests.Common.Securities.Options.StrategyMatcher
                 .Add(new OptionPosition(Call[105m], 1))
                 .Add(new OptionPosition(Call[105m, 1], 1))
                 .Add(new OptionPosition(Call[105m, 2], 1));
-        }
 
         [Test]
         public void CreatesStrikePredicate()
@@ -131,6 +128,22 @@ namespace QuantConnect.Tests.Common.Securities.Options.StrategyMatcher
                         new TestCase((legs, position) => legs[0].Strike < position.Strike)
                             .WithTarget(PredicateTargetValue.Strike, legs => legs[0].Strike)
                             .ExpectNoMatch(),
+
+                        new TestCase((legs, position) => position.Expiration < legs[0].Expiration)
+                            .WithTarget(PredicateTargetValue.Expiration, legs => legs[0].Expiration)
+                            .ExpectMatch(),
+
+                        new TestCase((legs, position) => position.Expiration > legs[0].Expiration)
+                            .WithTarget(PredicateTargetValue.Expiration, legs => legs[0].Expiration)
+                            .ExpectNoMatch(),
+
+                        new TestCase((legs, position) => legs[0].Expiration > position.Expiration)
+                            .WithTarget(PredicateTargetValue.Expiration, legs => legs[0].Expiration)
+                            .ExpectMatch(),
+
+                        new TestCase((legs, position) => legs[0].Expiration < position.Expiration)
+                            .WithTarget(PredicateTargetValue.Expiration, legs => legs[0].Expiration)
+                            .ExpectNoMatch(),
                     }
                     .Select(x => new TestCaseData(x.WithDefaults()).SetName(x.Name))
                     .ToArray();
@@ -147,19 +160,20 @@ namespace QuantConnect.Tests.Common.Securities.Options.StrategyMatcher
             public PredicateTargetValue Target { get; private set; }
             public Func<List<OptionPosition>, OptionPosition, bool> Predicate { get; }
             public Func<List<OptionPosition>, object> ReferenceValueProvider { get; private set; }
-            public Expression<Func<List<OptionPosition>, OptionPosition, bool>> Expression { get; }
+            public Expression<Func<IReadOnlyList<OptionPosition>, OptionPosition, bool>> Expression { get; }
             public ParameterExpression LegsExpression => Expression.Parameters[0];
             public ParameterExpression PositionExpression => Expression.Parameters[1];
+            public Expression BinaryComparisonExpression => Expression.Body;
 
             private readonly Lazy<OptionStrategyLegPredicate> _predicate;
 
             public IOptionStrategyLegPredicateReferenceValue CreateReferenceValue()
-                => _predicate.Value.Reference;
+                => OptionStrategyLegPredicate.CreateReferenceValue(LegsExpression, PositionExpression, Expression.Body);
 
             public OptionStrategyLegPredicate CreatePredicate()
                 => _predicate.Value;
 
-            public TestCase(Expression<Func<List<OptionPosition>, OptionPosition, bool>> expression)
+            public TestCase(Expression<Func<IReadOnlyList<OptionPosition>, OptionPosition, bool>> expression)
             {
                 Expression = expression;
                 Name = expression.toString();

@@ -1,11 +1,11 @@
 ﻿/*
  * QUANTCONNECT.COM - Democratizing Finance, Empowering Individuals.
  * Lean Algorithmic Trading Engine v2.0. Copyright 2014 QuantConnect Corporation.
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -13,13 +13,9 @@
  * limitations under the License.
 */
 
-using QuantConnect.Interfaces;
 using QuantConnect.Orders;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace QuantConnect.Securities.Option
 {
@@ -39,29 +35,50 @@ namespace QuantConnect.Securities.Option
         public Symbol Underlying { get; set; }
 
         /// <summary>
-        /// Option strategy legs 
+        /// Option strategy legs
         /// </summary>
-        public List<OptionLegData> OptionLegs { get; set; }
+        public List<OptionLegData> OptionLegs { get; set; } = new List<OptionLegData>();
 
         /// <summary>
         /// Option strategy underlying legs (usually 0 or 1 legs)
         /// </summary>
-        public List<UnderlyingLegData> UnderlyingLegs { get; set; }
+        public List<UnderlyingLegData> UnderlyingLegs { get; set; } = new List<UnderlyingLegData>();
+
+        /// <summary>
+        /// Defines common properties between <see cref="OptionLegData"/> and <see cref="UnderlyingLegData"/>
+        /// </summary>
+        public abstract class LegData
+        {
+            /// <summary>
+            /// Quantity multiplier used to specify proper scale (and direction) of the leg within the strategy
+            /// </summary>
+            public int Quantity { get; set; }
+
+            /// <summary>
+            /// Type of order that is to be sent to the market on strategy execution
+            /// </summary>
+            public OrderType OrderType { get; set; }
+
+            /// <summary>
+            /// Order limit price of the leg in case limit order is sent to the market on strategy execution
+            /// </summary>
+            public decimal OrderPrice { get; set; }
+
+            /// <summary>
+            /// Invokes the correct handler based on the runtime type.
+            /// </summary>
+            public abstract void Invoke(Action<UnderlyingLegData> underlyingHandler, Action<OptionLegData> optionHandler);
+        }
 
         /// <summary>
         /// This class is a POCO containing basic data for the option legs of the strategy
         /// </summary>
-        public class OptionLegData
+        public class OptionLegData : LegData
         {
             /// <summary>
             /// Option right (type) of the option leg
             /// </summary>
             public OptionRight Right { get; set; }
-
-            /// <summary>
-            /// Quantity multiplier used to specify proper scale (and direction) of the leg within the strategy
-            /// </summary>
-            public int Quantity { get; set; }
 
             /// <summary>
             /// Expiration date of the leg
@@ -74,35 +91,55 @@ namespace QuantConnect.Securities.Option
             public decimal Strike { get; set; }
 
             /// <summary>
-            /// Type of order that is to be sent to the market on strategy execution
+            /// Creates a new instance of <see cref="OptionLegData"/> from the specified <paramref name="position"/>
             /// </summary>
-            public OrderType OrderType { get; set; }
+            public static OptionLegData Create(int quantity, Symbol symbol, OrderType orderType = OrderType.Market, decimal? orderPrice = null)
+            {
+                return new OptionLegData
+                {
+                    Quantity = quantity,
+                    OrderType = orderType,
+                    Expiration = symbol.ID.Date,
+                    OrderPrice = orderPrice ?? 0m,
+                    Right = symbol.ID.OptionRight,
+                    Strike = symbol.ID.StrikePrice
+                };
+            }
 
             /// <summary>
-            /// Order limit price of the leg in case limit order is sent to the market on strategy execution
+            /// Invokes the <paramref name="optionHandler"/>
             /// </summary>
-            public decimal OrderPrice { get; set; }
+            public override void Invoke(Action<UnderlyingLegData> underlyingHandler, Action<OptionLegData> optionHandler)
+            {
+                optionHandler(this);
+            }
         }
 
         /// <summary>
         /// This class is a POCO containing basic data for the underlying leg of the strategy
         /// </summary>
-        public class UnderlyingLegData
+        public class UnderlyingLegData : LegData
         {
             /// <summary>
-            /// Quantity multiplier used to specify proper scale (and direction) of the leg within the strategy
+            /// Creates a new instance of <see cref="UnderlyingLegData"/> for the specified <paramref name="quantity"/> of underlying shares.
             /// </summary>
-            public int Quantity { get; set; }
+            public static UnderlyingLegData Create(int quantity, OrderType orderType = OrderType.Market, decimal? orderPrice = null)
+            {
+                return new UnderlyingLegData
+                {
+                    Quantity = quantity,
+                    OrderType = orderType,
+                    OrderPrice = orderPrice ?? 0m
+                };
+            }
 
             /// <summary>
-            /// Type of order that is to be sent to the market on strategy execution
+            /// Invokes the <paramref name="underlyingHandler"/>
             /// </summary>
-            public OrderType OrderType { get; set; }
-
-            /// <summary>
-            /// Order limit price of the leg in case limit order is sent to the market on strategy execution
-            /// </summary>
-            public decimal OrderPrice { get; set; }
+            public override void Invoke(Action<UnderlyingLegData> underlyingHandler, Action<OptionLegData> optionHandler)
+            {
+                underlyingHandler(this);
+            }
         }
     }
 }

@@ -18,9 +18,11 @@ using System;
 namespace QuantConnect.Securities.Option.StrategyMatcher
 {
     /// <summary>
-    /// Defines a lightweight structure representing a position in an option contract.
-    /// This type is heavily utilized by the options strategy matcher and is the parameter
-    /// type of option strategy definition predicates.
+    /// Defines a lightweight structure representing a position in an option contract or underlying.
+    /// This type is heavily utilized by the options strategy matcher and is the parameter type of
+    /// option strategy definition predicates. Underlying quantities should be represented in lot sizes,
+    /// which is equal to the quantity of shares divided by the contract's multiplier and then rounded
+    /// down towards zero (truncate)
     /// </summary>
     public struct OptionPosition : IEquatable<OptionPosition>
     {
@@ -29,6 +31,11 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
         /// </summary>
         public static OptionPosition None(Symbol symbol)
             => new OptionPosition(symbol, 0);
+
+        /// <summary>
+        /// Determines whether or not this position has any quantity
+        /// </summary>
+        public bool Exists => Quantity != 0;
 
         /// <summary>
         /// Number of contracts held, can be positive or negative
@@ -72,6 +79,15 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
         public OptionPosition Negate()
         {
             return new OptionPosition(Symbol, -Quantity);
+        }
+
+        /// <summary>
+        /// Creates a new <see cref="OptionPosition"/> with this position's <see cref="Symbol"/>
+        /// and the provided <paramref name="quantity"/>
+        /// </summary>
+        public OptionPosition WithQuantity(int quantity)
+        {
+            return new OptionPosition(Symbol, quantity);
         }
 
         /// <summary>Indicates whether the current object is equal to another object of the same type.</summary>

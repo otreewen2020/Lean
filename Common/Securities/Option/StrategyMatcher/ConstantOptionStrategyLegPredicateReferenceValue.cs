@@ -44,7 +44,7 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
         /// <summary>
         /// Returns the constant value provided at initialization
         /// </summary>
-        public object Resolve(List<OptionPosition> legs)
+        public object Resolve(IReadOnlyList<OptionPosition> legs)
         {
             return _value;
         }

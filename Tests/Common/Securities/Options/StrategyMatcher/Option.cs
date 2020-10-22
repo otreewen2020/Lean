@@ -13,6 +13,7 @@ namespace QuantConnect.Tests.Common.Securities.Options.StrategyMatcher
     {
         public static readonly DateTime ReferenceDate = new DateTime(2020, 10, 16);
 
+        public const decimal ContractMultiplier = 100m;
         public static Factory Contract { get; } = new Factory();
         public static FactoryRight Put { get; } = new FactoryRight(OptionRight.Put);
         public static FactoryRight Call { get; } = new FactoryRight(OptionRight.Call);

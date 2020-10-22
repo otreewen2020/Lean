@@ -22,6 +22,39 @@ using System.Linq.Expressions;
 namespace QuantConnect.Securities.Option.StrategyMatcher
 {
     /// <summary>
+    /// Defines the item result type of <see cref="OptionStrategyLegDefinition.Match"/>, containing the number of
+    /// times the leg definition matched the position (<see cref="Multiplier"/>) and applicable portion of the position.
+    /// </summary>
+    public struct OptionStrategyLegDefinitionMatch
+    {
+        /// <summary>
+        /// The number of times the definition is able to match the position. For example,
+        /// if the definition requires +2 contracts and the algorithm's position has +5
+        /// contracts, then this multiplier would equal 2.
+        /// </summary>
+        public int Multiplier { get; }
+
+        /// <summary>
+        /// The position that was successfully matched with the total quantity matched. For example,
+        /// if the definition requires +2 contracts and this multiplier equals 2, then this position
+        /// would have a quantity of 4. This may be different than the remaining quantity available in
+        /// the positions collection.
+        /// </summary>
+        public OptionPosition Position { get; }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="OptionStrategyLegDefinitionMatch"/> struct
+        /// </summary>
+        /// <param name="multiplier">The number of times the positions matched the leg definition</param>
+        /// <param name="position">The position that matched the leg definition</param>
+        public OptionStrategyLegDefinitionMatch(int multiplier, OptionPosition position)
+        {
+            Position = position;
+            Multiplier = multiplier;
+        }
+    }
+
+    /// <summary>
     /// Defines a single option leg in an option strategy. This definition supports direct
     /// match (does position X match the definition) and position collection filtering (filter
     /// collection to include matches)
@@ -54,14 +87,106 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
         }
 
         /// <summary>
+        /// Yields all possible matches for this leg definition held within the collection of <paramref name="positions"/>
+        /// </summary>
+        /// <param name="legs">The preceding legs already matched for the parent strategy definition</param>
+        /// <param name="positions">The remaining, unmatched positions available to be matched against</param>
+        /// <returns>An enumerable of potential matches</returns>
+        public IEnumerable<OptionStrategyLegDefinitionMatch> Match(
+            IReadOnlyList<OptionPosition> legs,
+            OptionPositionCollection positions
+            )
+        {
+            foreach (var position in Filter(legs, positions))
+            {
+                var multiplier = position.Quantity / Quantity;
+                if (multiplier != 0)
+                {
+                    yield return new OptionStrategyLegDefinitionMatch(multiplier,
+                        position.WithQuantity(multiplier * Quantity)
+                    );
+                }
+            }
+        }
+
+        /// <summary>
+        /// Filters the provided <paramref name="positions"/> collection such that any remaining positions are all
+        /// valid options that match this leg definition instance.
+        /// </summary>
+        public OptionPositionCollection Filter(IReadOnlyList<OptionPosition> legs, OptionPositionCollection positions)
+        {
+            foreach (var predicate in _predicates)
+            {
+                positions = predicate.Filter(legs, positions, true);
+            }
+
+            // at this point, every position in the positions
+            // collection is a valid match for this definition
+            return positions;
+        }
+
+        /// <summary>
+        /// Creates the appropriate <see cref="OptionStrategy.LegData"/> for the specified <paramref name="match"/>
+        /// </summary>
+        public OptionStrategy.LegData CreateLegData(OptionStrategyLegDefinitionMatch match)
+        {
+            return CreateLegData(
+                match.Position.Symbol,
+                match.Position.Quantity / Quantity
+            );
+        }
+
+        /// <summary>
+        /// Creates the appropriate <see cref="OptionStrategy.LegData"/> with the specified <paramref name="quantity"/>
+        /// </summary>
+        public static OptionStrategy.LegData CreateLegData(Symbol symbol, int quantity)
+        {
+            if (symbol.SecurityType == SecurityType.Option)
+            {
+                return OptionStrategy.OptionLegData.Create(quantity, symbol);
+            }
+
+            return OptionStrategy.UnderlyingLegData.Create(quantity);
+        }
+
+        /// <summary>
+        /// Determines whether or not this leg definition matches the specified <paramref name="position"/>,
+        /// and if so, what the resulting quantity of the <see cref="OptionStrategy.OptionLegData"/> should be.
+        /// </summary>
+        public bool TryMatch(OptionPosition position, out OptionStrategy.LegData leg)
+        {
+            if (Right != position.Right ||
+                Math.Sign(Quantity) != Math.Sign(position.Quantity))
+            {
+                leg = null;
+                return false;
+            }
+
+            var quantity = position.Quantity / Quantity;
+            if (quantity == 0)
+            {
+                leg = null;
+                return false;
+            }
+
+            leg = position.Symbol.SecurityType == SecurityType.Option
+                ? (OptionStrategy.LegData) OptionStrategy.OptionLegData.Create(quantity, position.Symbol)
+                : OptionStrategy.UnderlyingLegData.Create(quantity);
+
+            return true;
+        }
+
+        /// <summary>
         /// Creates a new <see cref="OptionStrategyLegDefinition"/> matching the specified parameters
         /// </summary>
         public static OptionStrategyLegDefinition Create(OptionRight right, int quantity,
-            IEnumerable<Expression<Func<List<OptionPosition>, OptionPosition, bool>>> predicates
+            IEnumerable<Expression<Func<IReadOnlyList<OptionPosition>, OptionPosition, bool>>> predicates
             )
         {
             return new OptionStrategyLegDefinition(right, quantity,
-                predicates.Select(OptionStrategyLegPredicate.Create)
+                // sort predicates such that indexed predicates are evaluated first
+                // this leaves fewer positions to be evaluated by the full table scan
+                predicates.Select(OptionStrategyLegPredicate.Create).OrderBy(p => p.IsIndexed ? 0 : 1)
             );
         }
 

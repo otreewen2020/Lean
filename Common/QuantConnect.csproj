@@ -409,6 +409,7 @@
     <Compile Include="Securities\Option\StrategyMatcher\OptionPositionCollection.cs" />
     <Compile Include="Securities\Option\StrategyMatcher\OptionStrategyLegDefinition.cs" />
     <Compile Include="Securities\Option\StrategyMatcher\OptionStrategyLegPredicate.cs" />
+    <Compile Include="Securities\Option\StrategyMatcher\OptionStrategyMatcher.cs" />
     <Compile Include="Securities\Option\StrategyMatcher\PredicateTargetValue.cs" />
     <Compile Include="Securities\RegisteredSecurityDataTypesProvider.cs" />
     <Compile Include="Securities\ErrorCurrencyConverter.cs" />

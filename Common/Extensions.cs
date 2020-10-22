@@ -2463,5 +2463,24 @@ namespace QuantConnect
                     throw new ArgumentOutOfRangeException(nameof(right), right, null);
             }
         }
+
+        public static void Invoke<T>(this T value, params Action<T>[] invokers)
+        {
+            var type = typeof(T);
+            if (!type.IsEnum)
+            {
+                throw new ArgumentException($"Invoke<T> is only for enum types. {type.Name} is not supported.");
+            }
+
+            var values = type.GetEnumValues();
+            for (var i = 0; i < values.Length; i++)
+            {
+                if (Equals(value, values.GetValue(i)))
+                {
+                    invokers[i](value);
+                    return;
+                }
+            }
+        }
     }
 }

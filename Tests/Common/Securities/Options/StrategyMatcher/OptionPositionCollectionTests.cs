@@ -28,6 +28,7 @@ namespace QuantConnect.Tests.Common.Securities.Options.StrategyMatcher
     [TestFixture]
     public class OptionPositionCollectionTests
     {
+        private const decimal ContractMultiplier = 100m;
         private static readonly DateTime Reference = new DateTime(2020, 10, 16);
 
         private SecurityHolding[] _holdings;
@@ -45,7 +46,7 @@ namespace QuantConnect.Tests.Common.Securities.Options.StrategyMatcher
                 CreateHolding(Symbols.SPY, 1000)
             };
 
-            _positions = OptionPositionCollection.Create(Symbols.SPY, _holdings);
+            _positions = OptionPositionCollection.Create(Symbols.SPY, ContractMultiplier, _holdings);
         }
 
         [Test]

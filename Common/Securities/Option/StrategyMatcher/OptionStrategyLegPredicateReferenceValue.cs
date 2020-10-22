@@ -48,7 +48,7 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
         /// be able to extract leg[0].Strike for the currently contemplated set of legs adhering to a
         /// strategy's definition.
         /// </summary>
-        public object Resolve(List<OptionPosition> legs)
+        public object Resolve(IReadOnlyList<OptionPosition> legs)
         {
             if (_index >= legs.Count)
             {

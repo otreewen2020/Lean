@@ -18,6 +18,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using QLNet;
 using QuantConnect.Util;
 
 namespace QuantConnect.Securities.Option.StrategyMatcher
@@ -40,12 +41,17 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
         /// <summary>
         /// Gets the underlying security's symbol
         /// </summary>
-        public Symbol Underlying => UnderlyingPosition.Symbol;
+        public Symbol Underlying => UnderlyingPosition.Symbol ?? Symbol.Empty;
 
         /// <summary>
         /// Gets the total count of unique positions, including the underlying
         /// </summary>
         public int Count => _positions.Count;
+
+        /// <summary>
+        /// Gets whether or not there's any positions in this collection.
+        /// </summary>
+        public bool IsEmpty => UnderlyingPosition.Symbol == null;
 
         /// <summary>
         /// Gets the quantity of underlying shares held
@@ -76,6 +82,16 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
         /// Gets the <see cref="Underlying"/> position
         /// </summary>
         public OptionPosition UnderlyingPosition { get; }
+
+        /// <summary>
+        /// Gets all unique strike prices in the collection, in ascending order.
+        /// </summary>
+        public IEnumerable<decimal> Strikes => _strikes.Keys;
+
+        /// <summary>
+        /// Gets all unique expiration dates in the collection, in chronological order.
+        /// </summary>
+        public IEnumerable<DateTime> Expirations => _expirations.Keys;
 
         private readonly ImmutableDictionary<Symbol, OptionPosition> _positions;
         private readonly ImmutableDictionary<OptionRight, ImmutableHashSet<Symbol>> _rights;
@@ -130,6 +146,15 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
                 var underlyingQuantity = positions.GetValueOrDefault(underlying).Quantity;
                 UnderlyingPosition = new OptionPosition(underlying, underlyingQuantity);
             }
+#if DEBUG
+            var errors = Validate().ToList();
+            if (errors.Count > 0)
+            {
+                throw new ArgumentException("OptionPositionCollection validation failed: "
+                    + Environment.NewLine + string.Join(Environment.NewLine, errors)
+                );
+            }
+#endif
         }
 
         /// <summary>
@@ -161,7 +186,7 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
         /// Creates a new <see cref="OptionPositionCollection"/> from the specified <paramref name="holdings"/>,
         /// filtering based on the <paramref name="underlying"/>
         /// </summary>
-        public static OptionPositionCollection Create(Symbol underlying, IEnumerable<SecurityHolding> holdings)
+        public static OptionPositionCollection Create(Symbol underlying, decimal contractMultiplier, IEnumerable<SecurityHolding> holdings)
         {
             var positions = Empty;
             foreach (var holding in holdings)
@@ -171,7 +196,8 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
                 {
                     if (symbol == underlying)
                     {
-                        positions = positions.Add(new OptionPosition(symbol, (int) holding.Quantity));
+                        var underlyingLots = (int) (holding.Quantity / contractMultiplier);
+                        positions = positions.Add(new OptionPosition(symbol, underlyingLots));
                     }
 
                     continue;
@@ -198,17 +224,38 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
             var symbol = position.Symbol;
             if (_positions.TryGetValue(symbol, out existing) || !symbol.HasUnderlying)
             {
-                // if the position already exists then no need re-computing indexes
-                // the underlying position is not included in any of the indexes, only '_positions'
+                position += existing;
+
+                if (position.Exists)
+                {
+                    // if the position already exists then it's already indexed
+                    return new OptionPositionCollection(
+                        _positions.SetItem(symbol, position),
+                        _rights,
+                        _strikes,
+                        _expirations
+                    );
+                }
+
+                // if the position's quantity went to zero, remove it entirely from the collection when
+                // removing, be sure to remove strike/expiration indexes. we purposefully keep the rights
+                // index populated, even with a zero count entry because it's bounded to 2 items (put/call)
+                var strikesValue = _strikes[position.Strike].Remove(symbol);
+                var expirationsValue = _expirations[position.Expiration].Remove(symbol);
+
                 return new OptionPositionCollection(
-                    _positions.SetItem(symbol, position + existing),
-                    _rights,
-                    _strikes,
-                    _expirations
+                    _positions.Remove(symbol),
+                    _rights.SetItem(position.Right, _rights[position.Right].Remove(symbol)),
+                    strikesValue.Count > 0
+                        ? _strikes.SetItem(position.Strike, strikesValue)
+                        : _strikes.Remove(position.Strike),
+                    expirationsValue.Count > 0
+                        ? _expirations.SetItem(position.Expiration, expirationsValue)
+                        : _expirations.Remove(position.Expiration)
                 );
             }
 
-            // re-compute indexes to include new position
+            // add symbol to indexes
             return new OptionPositionCollection(
                 _positions.SetItem(symbol, position),
                 _rights.Add(position.Right, symbol),
@@ -226,20 +273,17 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
             var rights = _rights;
             var strikes = _strikes;
             var expirations = _expirations;
-            var underlying = UnderlyingQuantity;
             foreach (var position in positions)
             {
                 var symbol = position.Symbol;
                 pos = pos.Add(symbol, position);
+
+                // index all option positions
                 if (symbol.HasUnderlying)
                 {
                     rights = rights.Add(position.Right, symbol);
                     strikes = strikes.Add(position.Strike, symbol);
                     expirations = expirations.Add(position.Expiration, symbol);
-                }
-                else
-                {
-                    underlying += position.Quantity;
                 }
             }
 
@@ -255,13 +299,9 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
             var rights = _rights.Remove(right.Invert());
 
             var positions = ImmutableDictionary<Symbol, OptionPosition>.Empty;
-            if (includeUnderlying)
+            if (includeUnderlying && HasUnderlying)
             {
-                OptionPosition underlyingPosition;
-                if (_positions.TryGetValue(Underlying, out underlyingPosition))
-                {
-                    positions = positions.Add(Underlying, underlyingPosition);
-                }
+                positions = positions.Add(Underlying, UnderlyingPosition);
             }
 
             var strikes = ImmutableSortedDictionary<decimal, ImmutableHashSet<Symbol>>.Empty;
@@ -286,7 +326,7 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
             var strikes = comparison.Filter(_strikes, strike);
             if (strikes.IsEmpty)
             {
-                return includeUnderlying ? Empty.Add(UnderlyingPosition) : Empty;
+                return includeUnderlying && HasUnderlying ? Empty.Add(UnderlyingPosition) : Empty;
             }
 
             var positions = ImmutableDictionary<Symbol, OptionPosition>.Empty;
@@ -321,7 +361,7 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
             var expirations = comparison.Filter(_expirations, expiration);
             if (expirations.IsEmpty)
             {
-                return includeUnderlying ? Empty.Add(UnderlyingPosition) : Empty;
+                return includeUnderlying && HasUnderlying ? Empty.Add(UnderlyingPosition) : Empty;
             }
 
             var positions = ImmutableDictionary<Symbol, OptionPosition>.Empty;
@@ -347,6 +387,48 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
             return new OptionPositionCollection(positions, rights, strikes, expirations);
         }
 
+        public IEnumerable<OptionPosition> ForSymbols(IEnumerable<Symbol> symbols)
+        {
+            foreach (var symbol in symbols)
+            {
+                OptionPosition position;
+                if (_positions.TryGetValue(symbol, out position))
+                {
+                    yield return position;
+                }
+            }
+        }
+
+        public IEnumerable<OptionPosition> ForStrike(decimal strike)
+        {
+            ImmutableHashSet<Symbol> symbols;
+            return _strikes.TryGetValue(strike, out symbols)
+                ? ForSymbols(symbols)
+                : Enumerable.Empty<OptionPosition>();
+        }
+
+        public IEnumerable<OptionPosition> ForExpiration(DateTime expiration)
+        {
+            ImmutableHashSet<Symbol> symbols;
+            return _expirations.TryGetValue(expiration, out symbols)
+                ? ForSymbols(symbols)
+                : Enumerable.Empty<OptionPosition>();
+        }
+
+        /// <summary>
+        /// Deducts the positions contained within the specified <paramref name="match"/>
+        /// </summary>
+        public OptionPositionCollection Accept(OptionStrategyDefinitionMatch match)
+        {
+            var positions = this;
+            foreach (var leg in match.Legs)
+            {
+                positions -= leg.Position;
+            }
+
+            return positions;
+        }
+
         /// <summary>Returns an enumerator that iterates through the collection.</summary>
         /// <returns>An enumerator that can be used to iterate through the collection.</returns>
         public IEnumerator<OptionPosition> GetEnumerator()
@@ -354,9 +436,54 @@ namespace QuantConnect.Securities.Option.StrategyMatcher
             return _positions.Select(kvp => kvp.Value).GetEnumerator();
         }
 
+        /// <summary>
+        /// Validates this collection returning an enumerable of validation errors.
+        /// This should only be invoked via tests and is automatically invoked via
+        /// the constructor in DEBUG builds.
+        /// </summary>
+        internal IEnumerable<string> Validate()
+        {
+            foreach (var kvp in _positions)
+            {
+                var position = kvp.Value;
+                var symbol = position.Symbol;
+                if (position.Quantity == 0)
+                {
+                    yield return $"{position}: Quantity == 0";
+                }
+
+                if (!symbol.HasUnderlying)
+                {
+                    continue;
+                }
+
+                ImmutableHashSet<Symbol> strikes;
+                if (!_strikes.TryGetValue(position.Strike, out strikes) || !strikes.Contains(symbol))
+                {
+                    yield return $"{position}: Not indexed by strike price";
+                }
+
+                ImmutableHashSet<Symbol> expirations;
+                if (!_expirations.TryGetValue(position.Expiration, out expirations) || !expirations.Contains(symbol))
+                {
+                    yield return $"{position}: Not indexed by expiration date";
+                }
+            }
+        }
+
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
+        }
+
+        public static OptionPositionCollection operator+(OptionPositionCollection positions, OptionPosition position)
+        {
+            return positions.Add(position);
+        }
+
+        public static OptionPositionCollection operator-(OptionPositionCollection positions, OptionPosition position)
+        {
+            return positions.Add(position.Negate());
         }
     }
 }
